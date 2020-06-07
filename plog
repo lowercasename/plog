@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+
+"""Plog - a personal logger.
+
+Usage:
+  plog new
+  plog plot ( -p PARAMETER | --param=PARAMETER) (-s STYLE | --style=STYLE)
+  plog (-h | --help)
+  plog (-v | --version)
+
+Modes:
+  new     Create a new record.
+  plot    Plot ratings for the selected parameter.
+
+Options:
+  -p PARAMETER --param=PARAMETER    Parameter to plot ('mood' or 'skin')
+  -s STYLE --style=STYLE            Plotting style ('graph' or 'spark')
+                                    [default: spark]
+  -h --help                         Show this screen.
+  -v --version                      Show version.
+
+"""
+
+import os
+import yaml
+import json
+import click
+from docopt import docopt
+from datetime import datetime
+from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+
+class decorations:
+   PURPLE = '\033[95m'
+   CYAN = '\033[96m'
+   DARKCYAN = '\033[36m'
+   BLUE = '\033[94m'
+   GREEN = '\033[92m'
+   YELLOW = '\033[93m'
+   RED = '\033[91m'
+   BOLD = '\033[1m'
+   UNDERLINE = '\033[4m'
+   END = '\033[0m'
+
+mood_abbreviations = {
+  'v': 'average',
+  'a': 'angry',
+  'h': 'happy',
+  'n': 'annoyed',
+  's': 'sad',
+  'x': 'anxious',
+  'p': 'productive',
+  't': 'tired'
+}
+
+spark_blocks = {
+  '1': '▁',
+  '2': '▂',
+  '3': '▃',
+  '4': '▅',
+  '5': '▇'
+}
+
+version = '1.0'
+
+if __name__ == '__main__':
+  arguments = docopt(__doc__, version='Plog ' + version)
+
+  # print(arguments)
+
+  # Set defaults and load user configuration
+  default_config = {
+    'data_directory': str(Path.home()) + '/.plog',
+    'max_rating': 5
+  }
+  current_config = {}
+  config_file = Path(str(Path.home()) + '/.config/plog/plog.conf')
+  if config_file.is_file() and os.path.getsize(config_file) > 0:
+    with open(config_file, 'r') as f:
+      current_config = yaml.safe_load(f)
+  else:
+    os.makedirs(str(Path.home()) + '/.config/plog', exist_ok=True)
+    with open(str(Path.home()) + '/.config/plog/plog.conf', 'w') as f:
+      current_config = yaml.dump(default_config, f)
+
+  # print(current_config)
+
+  if 'name' not in current_config:
+    name = input('Looks like this is your first time using Plog. What is your name? ')
+    current_config['name'] = name
+    with open(str(Path.home()) + '/.config/plog/plog.conf', 'w') as f:
+      yaml.dump(current_config, f)
+
+  print('\n' + decorations.BOLD + 'Welcome to Plog, ' + current_config['name'] + '!' + decorations.END + '\n')
+
+  if arguments['new'] == True:
+    while True:
+      try:
+        today_mood_rating = input('How is your mood today? [1-' + str(current_config['max_rating']) + ']: ')
+      except ValueError:
+        print(decorations.RED + "Sorry, I didn't understand that." + decorations.END)
+        continue
+
+      if int(today_mood_rating) <= 0 or int(today_mood_rating) > current_config['max_rating']:
+        print(decorations.RED + "Enter a rating between 1 and " + str(current_config['max_rating']) + "." + decorations.END)
+        continue
+      else:
+        # This is a valid answer!
+        break
+
+    while True:
+      today_mood_desc = input('Describe that mood [average (v), angry (a), happy (h), annoyed (n), sad (s), anxious (x), productive (p), tired (t)]: ')
+      if today_mood_desc.lower() not in ('v', 'a', 'h', 'n', 's', 'x', 'p', 't', 'average', 'angry', 'happy', 'annoyed', 'sad', 'anxious', 'productive', 'tired'):
+        print(decorations.RED + "That's not a valid mood." + decorations.END)
+      else:
+        if len(today_mood_desc) == 1:
+          today_mood_desc = mood_abbreviations[today_mood_desc]
+        break
+
+    while True:
+      try:
+        today_skin_rating = input('How is your skin today? [1-' + str(current_config['max_rating']) + ']: ')
+      except ValueError:
+        print(decorations.RED + "Sorry, I didn't understand that." + decorations.END)
+        continue
+
+      if int(today_skin_rating) <= 0 or int(today_skin_rating) > current_config['max_rating']:
+        print(decorations.RED + "Enter a rating between 1 and " + str(current_config['max_rating']) + "." + decorations.END)
+        continue
+      else:
+        # This is a valid answer!
+        break
+
+    today_health_desc = input('Any notes on your health? ')
+
+    today_record = {
+      'name': current_config['name'],
+      'date': datetime.today().strftime('%Y-%m-%d'),
+      'mood_rating': today_mood_rating,
+      'mood_desc': today_mood_desc,
+      'skin_rating': today_skin_rating,
+      'health_desc': today_health_desc,
+      'meta': {
+        'program_version': version,
+        'max_rating': current_config['max_rating']
+      }
+    }
+
+    # Save the day's record!
+    current_database = []
+    database_file = Path(current_config['data_directory'] + '/database.json')
+    if database_file.is_file() and os.path.getsize(database_file) > 0:
+      with open(database_file, 'r') as f:
+        current_database = json.load(f)
+    else:
+      os.makedirs(current_config['data_directory'], exist_ok=True)
+
+    current_database.append(today_record)
+    with open(current_config['data_directory'] + '/database.json', 'w') as f:
+      json.dump(current_database, f)
+      
+  elif arguments['plot'] == True:
+
+    # Get our target key
+    if arguments['--param'] == 'mood':
+      target_key = 'mood_rating'
+      title = 'Mood ratings'
+      short_title = 'Mood'
+      print('Graphing mood...\n')
+    elif arguments['--param'] == 'skin':
+      target_key = 'skin_rating'
+      title = 'Skin health ratings'
+      short_title = 'Skin'
+      print('Graphing skin health...\n')
+    else:
+      print(decorations.RED + 'Please specify a valid parameter (mood or skin)' + decorations.END)
+
+    # First check if we have a non-empty database
+    database_file = Path(current_config['data_directory'] + '/database.json')
+    if database_file.is_file() and os.path.getsize(database_file) > 0:
+      with open(database_file, 'r') as f:
+        current_database = json.load(f)
+
+        if arguments['--style'] == 'graph':
+          num_records = len(current_database)
+          x_values = np.zeros(num_records, dtype=float)
+          x_tick_labels = []
+          for i in range(num_records):
+            x_values[i] = current_database[i][target_key]
+            x_tick_labels.append(datetime.strptime(current_database[i]['date'], '%Y-%m-%d').strftime('%d %b'))
+          xs = np.arange(num_records)
+          ys = x_values
+          plt.plot(x_values)
+          # # zip joins x and y coordinates in pairs
+          for x,y in zip(xs,ys):
+            label = current_database[x]['mood_desc'].title()
+            plt.annotate(label, # this is the text
+              (x,y), # this is the point to label
+              textcoords="offset points", # how to position the text
+              xytext=(0,0), # distance from text to points (x,y)
+              ha='center',
+              backgroundcolor='white') # horizontal alignment can be left, right or center
+          plt.ylabel('Rating')
+          plt.xlabel('Date')
+          plt.yticks(np.arange(1, current_config['max_rating']+1, 1))
+          plt.xticks(np.arange(num_records), x_tick_labels)
+          plt.title(title)
+          plt.grid(False)
+          plt.show()
+        elif arguments['--style'] == 'spark':
+          # Use only last 30 records
+          records_to_show = current_database[-30:]
+          num_records = len(records_to_show)
+          sparkline = ''
+          for i in range(num_records):
+            # For each record, get the relevant rating and map it to a spark block,
+            # then push that spark block into the sparkline string.
+            sparkline = sparkline + spark_blocks[records_to_show[i][target_key]]
+          print(short_title + ' ' + sparkline)
+        else:
+          print(decorations.RED + 'Please specify a plotting style (graph or spark)' + decorations.END)
+    else:
+      print('The Plog database is empty - nothing to plot!')
